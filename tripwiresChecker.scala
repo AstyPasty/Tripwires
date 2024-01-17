@@ -1,4 +1,3 @@
-import ox.scl._
 import scala.collection.BitSet
 import scala.util.matching.Regex
 import scala.io.Source
@@ -29,10 +28,11 @@ object TripwiresChecker {
       if (timeout1.contains(key)) timeout1(key) else 0}
   }
 
-  // 
+  // The time and id of a state
   class StateModelRecord(val id: String, val commitTime: Double)
 
-
+  // The local model used, containing the state mapping, the transition mapping 
+  // and methods to update both of these
   class Model(state1: Map[String, StateModelRecord], transition1: Map[String, Double]) {
     private var states = state1;
     private var transitions = transition1;
@@ -89,10 +89,14 @@ object TripwiresChecker {
         var done = false
         while (!done) {
           val c = current.get
+          // c._3 is the bitset of the current 'collective model'
+          // The test here protects against a transition being overwritten as 
+          // this allows us to always 'rewind' to include a transition if that 
+          // has previously been skipped
           if (newVal <= index.get && c._3.range(0, newVal).equals(bitSet)) {
             //need to rewind
             done = current.compareAndSet(c, (newS, newT, bitSet.union(BitSet(newVal))))
-            if (done) {
+            if (done) { // Successfully changed 
               index.set(newVal)
               for (t <- trans) {
                 val a = transitionsCount.getOrElseUpdate(t, new TrieMap[Int, Unit])
