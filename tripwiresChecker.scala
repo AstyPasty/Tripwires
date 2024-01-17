@@ -46,14 +46,9 @@ object TripwiresChecker {
     }
   }
 
-  // Each attack pattern
+  // Each attack pattern has an id, description and collection of states
   class Pattern(val id: String, val description: String, val states: Map[String, State]) {
     def s(k: String) : State = states(k);
-  }
-
-  class Transition(orig: String, target: String) {
-    def original : String = orig;
-    def to : String = target;
   }
 
   object Run {
@@ -69,7 +64,7 @@ object TripwiresChecker {
       // Index indicates which entry from the log file to check next
       private var index = new AtomicInteger(-1)
       
-      // current is an atomic reference to the current State, Transition and 
+      // current is an atomic reference to the current State, Transitions and 
       // set of transitions that are to be checked
       private var current = new AtomicReference((start.state, start.transition, BitSet()))
       
@@ -175,6 +170,9 @@ object TripwiresChecker {
     // A function to read the csv input file and return a vector of RawData objects
     // Any relevant data from the csv file can be extracted by changing 
     // the column headers
+    // NB. furthest is the further index to read until; this is to avoid heap  
+    //     space issues. This could be improved by iteratively reading chunks of 
+    //     the file and then runnign the system up until the end of that chunk
     def readData(file: String, furthest: Int) : Vector[RawData] = {
       val csvFile = Source.fromFile(file)
       val lines = csvFile.getLines().toList
@@ -314,7 +312,6 @@ object TripwiresChecker {
         var i = 0
         var stateModel = model.state;
         var transitionModel = model.transition;
-        var targetTransitions : List[Transition] = List();
         var newTransitions : List[String] = List();
         var now = 0.0;
         var updated = false
@@ -334,25 +331,24 @@ object TripwiresChecker {
               if (trigger(attack.s(c).triggerParams, data(i))) {
                 now = data(i)._6
                 updated = true;
-                val t = new Transition(s.id, c)
                 // Check that transition has occured prior to the timeout
                 if (now <= s.commitTime + attack.s(s.id).timeout(c)) {
                   // Keep first transition time
                   transitionModel = transitionModel + 
-                                    ((t.original + ' ' + t.to) -> 
-                                      transitionModel.getOrElse((t.original + ' ' + t.to), now))
+                                    ((s.id + ' ' + c) -> 
+                                      transitionModel.getOrElse((s.id + ' ' + c), now))
                   // Update times
-                  val update = new StateModelRecord(t.to, now);
-                  stateModel = stateModel.updated(t.to, update);
-                  newTransitions = (t.original + ' ' + t.to) :: newTransitions
+                  val update = new StateModelRecord(c, now);
+                  stateModel = stateModel.updated(c, update);
+                  newTransitions = (s.id + ' ' + c) :: newTransitions
                   // Start new trace worker to check and output if new alert 
                   // generated
-                  if (attack.s(t.to).isOutput && ! noOutput) {
-                    val trace = new TraceWorker(stateModel, transitionModel, attack, t.to, now)
+                  if (attack.s(c).isOutput && ! noOutput) {
+                    val trace = new TraceWorker(stateModel, transitionModel, attack, c, now)
                     trace.run()
                   }
                 }
-                else stateModel = stateModel - t.original;
+                else stateModel = stateModel - s.id;
               }
             }
           }
